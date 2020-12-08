@@ -1,8 +1,9 @@
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import TimeSeriesSplit, train_test_split
 from sklearn.metrics import  classification_report, log_loss, roc_auc_score, accuracy_score, confusion_matrix
 from sklearn.model_selection import KFold
-from sklearn.pipeline import make_pipeline 
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 import seaborn as sns
@@ -40,7 +41,7 @@ def preprocessing():
 
 
   team_rank['SEASON_ID'] = team_rank['SEASON_ID'].apply(fun_inc)
-  team_rank.drop(["HOME_RECORD","CONFERENCE","LEAGUE_ID","ROAD_RECORD"],axis=1,inplace=True) 
+  team_rank.drop(["HOME_RECORD","CONFERENCE","LEAGUE_ID","ROAD_RECORD"],axis=1,inplace=True)
   team_rank.set_index("STANDINGSDATE",inplace=True)
 
   team_rank.astype({'SEASON_ID': 'int32'})
@@ -52,7 +53,7 @@ def preprocessing():
 
   #inner Join for the away team
   new_df = pd.merge(new_df,df_final_rank.add_suffix("_visitorTeam"),how = "inner", left_on=["VISITOR_TEAM_ID", "SEASON"], right_on=['TEAM_ID_visitorTeam', "SEASON_ID_visitorTeam"])
-  
+
   new_df.drop(["TEAM_ID_homeTeam","SEASON_ID_visitorTeam","TEAM_ID_visitorTeam"],axis=1,inplace=True)
   new_df['SEASON_ID_homeTeam'] = new_df['SEASON_ID_homeTeam'].apply(fun_dec)
   return new_df
@@ -74,41 +75,49 @@ def per_pos(conf_matx):
 if __name__ == '__main__':
 
   #score list keeps record of all 5 fold accuracies
-  score = []
-  new_df = preprocessing()
-  X = new_df.drop(['SEASON'], axis=1)._get_numeric_data().copy()
-  y = X["HOME_TEAM_WINS"]
-  X = X.drop(["HOME_TEAM_WINS"],axis=1)
-  folds = KFold(n_splits = 5)
-  print("total folds = ",folds.get_n_splits(X))
-  for train_ind, test_ind in folds.split(X):
-    X_train, X_test = X.iloc[train_ind], X.iloc[test_ind]
-    y_train, y_test = y.iloc[train_ind], y.iloc[test_ind]
-    clf = make_pipeline(StandardScaler(), SVC(gamma='auto'))
-    clf.fit(X_train,y_train)
-    test_preds = clf.predict(X_test)
-    print(classification_report(y_true=y_test,y_pred=test_preds))
-    score.append(accuracy_score(y_true=y_test,y_pred=test_preds))
-  print(f' ######## 5 Fold Cross Validation Accuracy Score is  :  {sum(score)/len(score)} #####\n\n') 
-  conf = confusion_matrix(y_true=y_test,y_pred=test_preds)
-  conf_matx = pd.DataFrame(conf, columns=['Predicted loose', 'Predicted Win'],
-    index=['Actual loose', 'Actual Win'])
+  for i in range(2):
+    score = []
+    new_df = preprocessing()
+    X = new_df.drop(['SEASON'], axis=1)._get_numeric_data().copy()
+    y = X["HOME_TEAM_WINS"]
+    X = X.drop(["HOME_TEAM_WINS"],axis=1)
+    if i == 0:
+      print("*****KERNEL = Linear*****")
+    else:
+      print("*****KERNEL = Radial Basis Function*****")
+    folds = KFold(n_splits = 5)
+    print("total folds = ",folds.get_n_splits(X))
+    for train_ind, test_ind in folds.split(X):
+      X_train, X_test = X.iloc[train_ind], X.iloc[test_ind]
+      y_train, y_test = y.iloc[train_ind], y.iloc[test_ind]
+      if i == 0:
+        clf = make_pipeline(StandardScaler(), SVC(gamma='auto',kernel='linear'))
+      else:
+        clf = make_pipeline(StandardScaler(), SVC(gamma='auto',kernel='rbf'))
+      clf.fit(X_train,y_train)
+      test_preds = clf.predict(X_test)
+      print(classification_report(y_true=y_test,y_pred=test_preds, labels = np.unique(test_preds)))
+      score.append(accuracy_score(y_true=y_test,y_pred=test_preds))
+    print(f' ######## 5 Fold Cross Validation Accuracy Score is  :  {sum(score)/len(score)} #####\n\n')
+    conf = confusion_matrix(y_true=y_test,y_pred=test_preds)
+    conf_matx = pd.DataFrame(conf, columns=['Predicted loose', 'Predicted Win'],
+      index=['Actual loose', 'Actual Win'])
 
-  print(conf_matx)
-  
-  print('\n \n ### Per Pos Tag Accuracies ####')
+    print(conf_matx)
 
-  ppos = per_pos(conf)
-  print(ppos)
+    print('\n \n ### Per Pos Tag Accuracies ####')
 
-  fp,fn = fp_fn(conf)
+    ppos = per_pos(conf)
+    print(ppos)
 
-  print('\n\n###### False positives #####')
-  print(fp)
+    fp,fn = fp_fn(conf)
 
-  print('\n \n#### False Negatives #####')
-  print(fn)
+    print('\n\n###### False positives #####')
+    print(fp)
 
-  sns.set(font_scale=1.4)
-  sns.heatmap(conf,annot=True, annot_kws={"size": 16})
-  plt.show()
+    print('\n \n#### False Negatives #####')
+    print(fn)
+
+    sns.set(font_scale=1.4)
+    sns.heatmap(conf,annot=True, annot_kws={"size": 16})
+    plt.show()
